@@ -1,5 +1,5 @@
-// This is your Prisma schema file.
-// Learn more about it in the docs: https://pris.ly/d/prisma-schema
+// Mnemo — Prisma Schema
+// Learn more: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
@@ -10,38 +10,87 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─────────────────────────────────────────────
+// Topic
+// Atomic knowledge unit. Belongs to a subject + unit.
+// user_id is managed by Auth.js — no explicit User model needed.
+// ─────────────────────────────────────────────
 model Topic {
   id        String    @id @default(cuid())
+  user_id   String
   subject   String
   unit      String
   title     String
-  user_id   String
   sessions  Session[]
+  pins      Pin[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
   @@index([user_id])
+  @@index([user_id, subject])
 }
 
+// ─────────────────────────────────────────────
+// Session
+// A single study event linked to a topic.
+// confidence: 0.0–1.0 (normalised from user input 1–5)
+// date: stated study date — used by decay engine, NOT createdAt
+// ─────────────────────────────────────────────
 model Session {
   id         String   @id @default(cuid())
   topic_id   String
   topic      Topic    @relation(fields: [topic_id], references: [id], onDelete: Cascade)
-  date       DateTime
-  duration   Int      // duration in minutes
-  confidence Float    // confidence rating 0.0–1.0
+  date       DateTime // study date — decay engine uses this for days_elapsed
+  duration   Int      // minutes
+  confidence Float    // 0.0–1.0  bands: low <0.34, mid <0.67, high >=0.67
   notes      String?
   createdAt  DateTime @default(now())
 
   @@index([topic_id])
+  @@index([topic_id, date])
 }
 
+// ─────────────────────────────────────────────
+// UserSettings
+// Per-user decay constants (λ) and confidence band thresholds.
+// Defaults are conservative — tune after first week of real use.
+// ─────────────────────────────────────────────
 model UserSettings {
-  id           String   @id @default(cuid())
-  user_id      String   @unique
-  lambda_low   Float    @default(0.3)  // decay constant for low confidence
-  lambda_mid   Float    @default(0.15) // decay constant for medium confidence
-  lambda_high  Float    @default(0.07) // decay constant for high confidence
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String   @id @default(cuid())
+  user_id         String   @unique
+
+  // Decay constants (λ) — higher = faster decay
+  lambda_low      Float    @default(0.20)  // confidence < threshold_low  → half-life ~3.5d
+  lambda_mid      Float    @default(0.10)  // confidence < threshold_mid  → half-life ~7d
+  lambda_high     Float    @default(0.05)  // confidence >= threshold_mid → half-life ~14d
+
+  // Confidence band cutoffs (maps 0.0–1.0 confidence to λ tier)
+  threshold_low   Float    @default(0.34)  // below this → lambda_low
+  threshold_mid   Float    @default(0.67)  // below this → lambda_mid, above → lambda_high
+
+  // Decay score status thresholds (0–100 score → status label)
+  score_critical  Float    @default(30.0)  // score <= this → "critical"
+  score_fading    Float    @default(60.0)  // score <= this → "fading", above → "fresh"
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────
+// Pin
+// Quick-reference cards pinned by the user.
+// Optionally linked to a topic for context.
+// ─────────────────────────────────────────────
+model Pin {
+  id        String   @id @default(cuid())
+  user_id   String
+  topic_id  String?           // optional — pin can exist without a topic
+  topic     Topic?   @relation(fields: [topic_id], references: [id], onDelete: SetNull)
+  title     String
+  content   String            // markdown supported
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([user_id])
+  @@index([topic_id])
 }
