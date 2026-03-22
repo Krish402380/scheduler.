@@ -1,0 +1,47 @@
+// This is your Prisma schema file.
+// Learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Topic {
+  id        String    @id @default(cuid())
+  subject   String
+  unit      String
+  title     String
+  user_id   String
+  sessions  Session[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([user_id])
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  topic_id   String
+  topic      Topic    @relation(fields: [topic_id], references: [id], onDelete: Cascade)
+  date       DateTime
+  duration   Int      // duration in minutes
+  confidence Float    // confidence rating 0.0–1.0
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  @@index([topic_id])
+}
+
+model UserSettings {
+  id           String   @id @default(cuid())
+  user_id      String   @unique
+  lambda_low   Float    @default(0.3)  // decay constant for low confidence
+  lambda_mid   Float    @default(0.15) // decay constant for medium confidence
+  lambda_high  Float    @default(0.07) // decay constant for high confidence
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
